@@ -2,25 +2,26 @@
 
 ## Purpose
 
-This document describes the internal architecture of the Tutorflix Application Server.
+This document defines the internal architecture of the Tutorflix Application Server.
 
-The backend is responsible for executing all business logic, enforcing authorization, validating requests, orchestrating integrations, and managing communication with the database and external services.
+The backend serves as the central execution engine of the platform. It is responsible for processing business logic, enforcing authorization, managing integrations, coordinating workflows, and interacting with the database.
 
-Tutorflix follows a **Modular Layered Architecture**, where each business domain is implemented as an independent module while sharing common infrastructure.
+Tutorflix follows a **Modular Monolith Architecture** organized around business domains. Each domain encapsulates its own APIs, business rules, validation, and data access while sharing common infrastructure.
 
 ---
 
 # Architecture Style
 
-The backend follows:
+The backend is designed using the following architectural patterns:
 
 - Modular Monolith
 - Layered Architecture
-- RESTful API
-- Domain-Oriented Design
+- Domain-Oriented Modules
 - Repository Pattern
-- Dependency Injection (Future)
-- Stateless Services
+- REST API
+- Stateless Request Processing
+- Dependency Injection Ready
+- Shared Infrastructure Layer
 
 ---
 
@@ -29,46 +30,63 @@ The backend follows:
 ```mermaid
 flowchart TD
 
-Client["Frontend Applications"]
+Client["Landing Website / Portal"]
 
-Middleware["Authentication & RBAC Middleware"]
+Middleware["Middleware Layer"]
 
 Router["REST API Routes"]
 
-Modules["Business Modules"]
+Controller["Controllers"]
 
-Repositories["Repository Layer"]
+Service["Business Services"]
+
+Repository["Repositories"]
 
 Prisma["Prisma ORM"]
 
 Supabase["Supabase PostgreSQL"]
 
 Client --> Middleware
-
 Middleware --> Router
-
-Router --> Modules
-
-Modules --> Repositories
-
-Repositories --> Prisma
-
+Router --> Controller
+Controller --> Service
+Service --> Repository
+Repository --> Prisma
 Prisma --> Supabase
 ```
 
 ---
 
-# Backend Structure
+# Backend Directory Structure
 
 ```text
 src/
 
 ├── config/
 │
+├── core/
+│   ├── errors/
+│   ├── logger/
+│   ├── responses/
+│   ├── constants/
+│   └── base/
+│
 ├── middleware/
+│   ├── auth.middleware.ts
+│   ├── rbac.middleware.ts
+│   ├── validation.middleware.ts
+│   ├── error.middleware.ts
+│   ├── rateLimit.middleware.ts
+│   └── requestLogger.middleware.ts
+│
+├── integrations/
+│   ├── supabase/
+│   ├── microsoft-teams/
+│   ├── email/
+│   ├── whatsapp/
+│   └── payments/
 │
 ├── modules/
-│   │
 │   ├── auth/
 │   ├── users/
 │   ├── leads/
@@ -83,11 +101,9 @@ src/
 │   ├── reports/
 │   └── administration/
 │
-├── shared/
+├── routes/
 │
 ├── utils/
-│
-├── routes/
 │
 ├── app.ts
 │
@@ -98,35 +114,47 @@ src/
 
 # Module Structure
 
-Every business module follows the same structure.
+Every domain module follows the same internal structure.
 
 Example:
 
 ```text
 students/
 
-├── student.controller.ts
+student.controller.ts
 
-├── student.service.ts
+student.service.ts
 
-├── student.repository.ts
+student.repository.ts
 
-├── student.routes.ts
+student.routes.ts
 
-├── student.validation.ts
+student.validation.ts
 
-├── student.types.ts
+student.types.ts
 
-└── index.ts
+student.mapper.ts
+
+index.ts
 ```
 
-This ensures consistency across the entire backend.
+Every module owns:
+
+- Routes
+- Controller
+- Service
+- Repository
+- Validation
+- Types
+- Mapping
+
+No other module directly accesses another module's repository.
 
 ---
 
 # Request Lifecycle
 
-Every request follows the same processing pipeline.
+Every incoming request follows the same pipeline.
 
 ```mermaid
 flowchart LR
@@ -163,7 +191,7 @@ Prisma
 
 -->
 
-Database
+PostgreSQL
 
 -->
 
@@ -176,9 +204,9 @@ Response
 
 ## Routes
 
-Responsibilities:
+Responsibilities
 
-- Register endpoints
+- Register API endpoints
 - Apply middleware
 - Forward requests
 
@@ -188,126 +216,209 @@ Routes contain no business logic.
 
 ## Middleware
 
-Responsibilities:
+Responsibilities
 
 - Authentication
 - RBAC
-- Request Logging
+- Validation
+- Logging
 - Rate Limiting
-- Error Handling
+- Global Error Handling
+
+Middleware executes before controllers.
 
 ---
 
 ## Controllers
 
-Responsibilities:
+Responsibilities
 
 - Receive HTTP requests
-- Parse parameters
-- Call Services
+- Parse request data
+- Invoke business services
 - Return HTTP responses
 
-Controllers contain minimal logic.
+Controllers should remain thin.
 
 ---
 
 ## Services
 
-The Service Layer contains the core business logic.
+The Service Layer contains the application's business logic.
 
-Responsibilities:
+Responsibilities
 
-- Validation
 - Business rules
 - Workflow orchestration
-- Domain operations
+- Validation beyond schema validation
+- Cross-domain coordination
+- Transactions
 
-Examples:
+Examples
 
 - Convert Lead
-- Schedule Class
+- Schedule Trial
 - Assign Tutor
 - Verify Payment
-- Send Notifications
+- Moderate Chat Message
 
 ---
 
-## Repository Layer
+## Repositories
 
-Repositories isolate database access.
+Repositories abstract all database interaction.
 
-Responsibilities:
+Responsibilities
 
 - CRUD operations
 - Query optimization
 - Transactions
-- Data mapping
+- Mapping database records
 
-Repositories never contain business logic.
+Repositories never contain business rules.
 
 ---
 
 ## Prisma ORM
 
-Responsibilities:
+Responsibilities
 
-- Generate SQL queries
-- Type-safe database access
-- Relationship handling
+- Generate SQL
+- Manage relationships
+- Type-safe queries
 - Migrations
 
 ---
 
 ## PostgreSQL
 
-Stores all persistent application data.
+Stores all persistent business data.
 
 Managed through Supabase.
 
 ---
 
-# Shared Components
+# Core Infrastructure
 
-The backend includes shared infrastructure used by all modules.
+The **core** layer contains reusable backend infrastructure.
 
-## Authentication
+## Errors
 
-JWT verification using Supabase Auth.
-
----
-
-## RBAC
-
-Checks user permissions before accessing protected resources.
-
----
-
-## Validation
-
-Request validation using Zod.
+- Custom Exceptions
+- Error Codes
+- HTTP Errors
 
 ---
 
 ## Logger
 
-Centralized logging for debugging and monitoring.
+Centralized application logging.
+
+Future integrations:
+
+- Winston
+- Pino
 
 ---
 
-## Error Handler
+## Response Helpers
 
-Provides consistent API error responses.
+Standardized API responses.
+
+Example
+
+Success
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+Error
+
+```json
+{
+  "success": false,
+  "message": "Forbidden"
+}
+```
 
 ---
 
-## Configuration
+## Constants
 
-Loads:
+Shared constants
 
-- Environment variables
-- Secrets
-- API Keys
-- Feature flags
+Examples
+
+- Roles
+- Permissions
+- Statuses
+- Message Types
+- Notification Types
+
+---
+
+# Integrations
+
+External systems are isolated inside the integrations layer.
+
+## Supabase
+
+Provides
+
+- Authentication
+- Database
+- Storage
+- Realtime
+
+---
+
+## Microsoft Teams
+
+Responsibilities
+
+- Meeting creation
+- Join links
+- Meeting management
+
+---
+
+## Email Provider
+
+Responsibilities
+
+- Welcome emails
+- Password reset
+- Notifications
+
+---
+
+## WhatsApp
+
+Responsibilities
+
+- Parent notifications
+- Reminders
+- Alerts
+
+---
+
+## Payment Providers
+
+Current
+
+- Manual Verification
+
+Future
+
+- Stripe
+- PayPal
+- Local Payment Gateway
+
+The Payment module communicates only with the payment integration layer.
 
 ---
 
@@ -315,55 +426,19 @@ Loads:
 
 | Module | Responsibility |
 |----------|----------------|
-| Authentication | Authentication & Sessions |
-| Users | User accounts and roles |
-| Leads | Lead lifecycle |
-| Trials | Trial management |
+| Authentication | Login and sessions |
+| Users | User profiles and roles |
+| Leads | Lead management |
+| Trials | Trial lessons |
 | Students | Student lifecycle |
 | Parents | Parent management |
-| Tutors | Tutor management |
+| Tutors | Tutor lifecycle |
 | Scheduling | Classes and calendars |
-| Packages | Purchased lesson hours |
+| Packages | Lesson packages |
 | Payments | Payment processing |
-| Communication | Chat & notifications |
-| Reports | Analytics |
-| Administration | Settings & audit logs |
-
----
-
-# External Integrations
-
-The backend integrates with external services.
-
-```mermaid
-flowchart LR
-
-Server
-
--->
-
-Supabase
-
-Server
-
--->
-
-MicrosoftTeams
-
-Server
-
--->
-
-EmailProvider
-
-Server
-
--->
-
-WhatsAppAPI
-```
-
-The frontend never communicates with these services directly.
+| Communication | Chat and notifications |
+| Reports | Reporting and analytics |
+| Administration | Settings, moderation, audit logs |
 
 ---
 
@@ -371,62 +446,76 @@ The frontend never communicates with these services directly.
 
 The backend follows these principles.
 
-### Single Responsibility
+## Single Responsibility
 
-Every module has one responsibility.
-
----
-
-### Separation of Concerns
-
-Controllers, services, repositories, and validation are separated.
+Each module has one responsibility.
 
 ---
 
-### Stateless Processing
+## Domain Ownership
 
-Requests do not depend on server memory.
-
----
-
-### Centralized Business Logic
-
-Business rules exist only within the Service Layer.
+Every business capability belongs to exactly one module.
 
 ---
 
-### Reusable Infrastructure
+## Loose Coupling
 
-Shared middleware and utilities are reused across all modules.
+Modules communicate through services rather than direct database access.
 
 ---
 
-# Future Improvements
+## Thin Controllers
 
-The architecture supports future additions such as:
+Controllers delegate all work to services.
 
-- Background Job Queue
-- Redis Caching
+---
+
+## Centralized Business Logic
+
+Business rules exist only within services.
+
+---
+
+## Infrastructure Isolation
+
+External services are accessed exclusively through the integrations layer.
+
+---
+
+## Stateless Processing
+
+The backend stores no session state in memory.
+
+---
+
+# Future Enhancements
+
+The architecture supports future additions without restructuring.
+
+Possible enhancements include
+
+- Redis Cache
+- BullMQ Job Queue
 - WebSockets
-- AI Services
-- Payment Providers
+- AI Moderation Service
+- AI Scheduling Assistant
+- Search Engine
 - Event Bus
-- Microservices (if required)
-
-These additions can be introduced without major restructuring.
+- Microservices (if needed)
 
 ---
 
 # Design Decisions
 
 - Backend organized by business domains rather than technical layers.
-- All business logic resides in the Service Layer.
-- Database access is isolated through repositories.
-- Prisma provides type-safe ORM functionality.
-- Authentication is delegated to Supabase Auth.
-- Authorization is enforced using RBAC middleware.
-- External services are accessed exclusively through the backend.
-- The backend remains a modular monolith until scaling requirements justify decomposition into microservices.
+- Shared infrastructure is isolated from business modules.
+- Integrations are separated from application logic.
+- Prisma is the only ORM used for database access.
+- Supabase provides managed infrastructure only.
+- Controllers remain thin.
+- Business logic resides exclusively within services.
+- Repository Pattern isolates persistence logic.
+- The backend remains a Modular Monolith until operational requirements justify decomposition.
 
 ---
 

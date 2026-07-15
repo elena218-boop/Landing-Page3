@@ -4,7 +4,7 @@
 
 This document defines the core business entities of the Tutorflix platform.
 
-The Business Layer represents the operational workflow of the academy, including lead management, trial classes, student enrollment, tutor assignments, scheduling, lesson packages, and payment processing.
+The Business Layer models the complete operational workflow of the academy, including lead management, trial lessons, student enrollment, tutor assignments, scheduling, lesson packages, attendance, and payment processing.
 
 ---
 
@@ -187,6 +187,8 @@ string status
 
 datetime assigned_at
 
+datetime ended_at
+
 }
 
 %% =========================
@@ -229,7 +231,9 @@ uuid student_id FK
 
 uuid tutor_id FK
 
-datetime requested_date
+datetime requested_start
+
+datetime requested_end
 
 string requested_by
 
@@ -238,7 +242,7 @@ string status
 }
 
 %% =========================
-%% CLASSES
+%% CLASSES (Series)
 %% =========================
 
 CLASSES {
@@ -249,9 +253,33 @@ uuid tutor_assignment_id FK
 
 uuid subject_id FK
 
+string title
+
+string recurrence
+
+date start_date
+
+date end_date
+
+string status
+
+}
+
+%% =========================
+%% CLASS SESSIONS
+%% =========================
+
+CLASS_SESSIONS {
+
+uuid id PK
+
+uuid class_id FK
+
 datetime start_time
 
 datetime end_time
+
+string meeting_link
 
 string status
 
@@ -261,7 +289,7 @@ ATTENDANCE {
 
 uuid id PK
 
-uuid class_id FK
+uuid session_id FK
 
 uuid student_id FK
 
@@ -281,11 +309,11 @@ uuid student_id FK
 
 string package_name
 
-int total_hours
-
-int remaining_hours
+int purchased_hours
 
 string status
+
+date expires_at
 
 }
 
@@ -298,6 +326,10 @@ uuid package_id FK
 int hours
 
 string transaction_type
+
+string reference_type
+
+uuid reference_id
 
 datetime created_at
 
@@ -315,9 +347,13 @@ uuid package_id FK
 
 decimal amount
 
-string provider
+string payment_method
+
+string payment_provider
 
 string status
+
+string receipt_url
 
 datetime paid_at
 
@@ -359,11 +395,13 @@ STUDENTS ||--o{ CLASS_REQUESTS : requests
 
 TUTORS ||--o{ CLASS_REQUESTS : approves
 
-TUTOR_ASSIGNMENTS ||--o{ CLASSES : schedules
+TUTOR_ASSIGNMENTS ||--o{ CLASSES : owns
 
-SUBJECTS ||--o{ CLASSES : belongs_to
+CLASSES ||--o{ CLASS_SESSIONS : contains
 
-CLASSES ||--o{ ATTENDANCE : records
+CLASS_SESSIONS ||--o{ ATTENDANCE : records
+
+SUBJECTS ||--o{ CLASSES : teaches
 
 STUDENTS ||--o{ PACKAGES : owns
 
@@ -395,7 +433,7 @@ Tutor Assignment
 
 -->
 
-Package
+Package Purchase
 
 -->
 
@@ -411,45 +449,95 @@ Class
 
 -->
 
+Class Session
+
+-->
+
 Attendance
+
+-->
+
+Package Transaction
 ```
 
 ---
 
-# Entity Responsibilities
+# Package Balance
 
-| Entity | Responsibility |
-|---------|----------------|
-| Leads | Prospective students |
-| Lead Notes | Follow-up notes |
-| Lead Activities | Lead history |
-| Trials | Introductory lessons |
-| Trial Feedback | Tutor evaluation of the trial |
-| Students | Enrolled learners |
-| Parents | Parent or guardian records |
-| Student Parents | Student–parent relationship |
-| Tutors | Tutor profiles |
-| Tutor Availability | Weekly availability schedule |
-| Tutor Assignments | Student–tutor assignments and history |
-| Subjects | Subjects offered by the academy |
-| Student Subjects | Subjects studied by students |
-| Tutor Subjects | Subjects taught by tutors |
-| Class Requests | Requested lesson schedule |
-| Classes | Confirmed lessons |
-| Attendance | Attendance tracking |
-| Packages | Purchased lesson packages |
-| Package Transactions | Package hour adjustments |
-| Payments | Payment records |
+Package hours are **not stored directly**.
+
+The available balance is calculated from `PACKAGE_TRANSACTIONS`.
+
+Example:
+
+| Transaction | Hours |
+|-------------|------:|
+| Package Purchase | +20 |
+| Class Completed | -1 |
+| Makeup Credit | +1 |
+| Refund | -2 |
+
+Current Balance = **18 Hours**
+
+This approach ensures a complete audit trail and prevents inconsistencies.
+
+---
+
+# Payment Model
+
+The payment system is provider-independent.
+
+## Current Provider
+
+- Manual Verification
+
+## Future Providers
+
+- Stripe
+- PayPal
+- Local Payment Gateways
+
+### Payment Method
+
+Examples:
+
+- Manual
+- Credit Card
+- Bank Transfer
+- Wallet
+
+### Payment Provider
+
+Examples:
+
+- Manual
+- Stripe
+- PayPal
+
+This allows new payment gateways to be introduced without changing the business model.
+
+---
+
+# Scheduling Model
+
+Scheduling is divided into three stages:
+
+1. **Class Request** – A student, parent, tutor, or admin requests a lesson.
+2. **Class** – Represents the recurring lesson or course.
+3. **Class Session** – Represents each individual lesson occurrence.
+
+This separation supports recurring schedules, cancellations, rescheduling, attendance, and makeup lessons without duplicating class information.
 
 ---
 
 # Design Decisions
 
 - Leads are converted into Students after successful trials.
-- Tutors are assigned through the Tutor Assignments entity rather than directly to students.
-- Scheduling is separated into Class Requests and Classes.
-- Parents and Students use a many-to-many relationship.
-- Subjects are shared between students and tutors.
-- Payments are linked to Packages rather than directly to Students.
-- Package balances are maintained through Package Transactions.
-- Tutor availability is managed separately from scheduled classes.
+- Tutors are assigned through Tutor Assignments.
+- Scheduling separates requests, recurring classes, and individual sessions.
+- Parents and Students have a many-to-many relationship.
+- Subjects are linked independently to students and tutors.
+- Package balances are derived from Package Transactions.
+- Payments use a provider-independent architecture.
+- Tutor availability is independent of scheduled classes.
+- Individual attendance is tracked per Class Session.
